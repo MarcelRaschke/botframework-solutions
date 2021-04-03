@@ -27,7 +27,7 @@
         "adaptivecards": "^1.1.3",
         "azure-cognitiveservices-contentmoderator": "^4.0.0",
         "botbuilder": "^4.9.2",
-        "botbuilder-ai": "^4.9.2",
+        "botbuilder-ai": "^4.12.0",
         "botbuilder-azure": "^4.9.2",
         "botbuilder-dialogs": "^4.9.2",
         "botframework-config": "^4.9.2",
