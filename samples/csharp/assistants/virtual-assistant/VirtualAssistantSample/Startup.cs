@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -24,7 +25,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using VirtualAssistantSample.Adapters;
-using VirtualAssistantSample.Authentication;
 using VirtualAssistantSample.Bots;
 using VirtualAssistantSample.Dialogs;
 using VirtualAssistantSample.Services;
@@ -58,7 +58,10 @@ namespace VirtualAssistantSample
             services.AddSingleton(Configuration);
 
             // Load settings
-            var settings = new BotSettings();
+            var settings = new BotSettings()
+            {
+                LogPersonalData = Configuration.GetSection("logPersonalInfo")?.Value.ToLower() == "true"
+            };
             Configuration.Bind(settings);
             services.AddSingleton(settings);
 
@@ -73,7 +76,8 @@ namespace VirtualAssistantSample
             services.AddSingleton(skillsConfig);
 
             // Register AuthConfiguration to enable custom claim validation.
-            services.AddSingleton(sp => new AuthenticationConfiguration { ClaimsValidator = new AllowedCallersClaimsValidator(skillsConfig) });
+            var allowedCallers = (from skill in skillsConfig.Skills.Values select skill.AppId).ToList();
+            services.AddSingleton(sp => new AuthenticationConfiguration { ClaimsValidator = new AllowedCallersClaimsValidator(allowedCallers) });
 
             // Configure telemetry
             services.AddApplicationInsightsTelemetry();
@@ -81,7 +85,8 @@ namespace VirtualAssistantSample
             services.AddSingleton<ITelemetryInitializer, OperationCorrelationTelemetryInitializer>();
             services.AddSingleton<ITelemetryInitializer, TelemetryBotIdInitializer>();
             services.AddSingleton<TelemetryInitializerMiddleware>();
-            services.AddSingleton<TelemetryLoggerMiddleware>();
+
+            services.AddSingleton<TelemetryLoggerMiddleware>(s => new TelemetryLoggerMiddleware(s.GetService<IBotTelemetryClient>(), settings.LogPersonalData));
 
             // Configure bot services
             services.AddSingleton<BotServices>();

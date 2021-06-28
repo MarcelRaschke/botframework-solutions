@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -13,12 +14,14 @@ using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Builder.LanguageGeneration;
 using Microsoft.Bot.Connector.Authentication;
 using Microsoft.Bot.Solutions;
-using Microsoft.Bot.Solutions.Feedback;
 using Microsoft.Bot.Solutions.Responses;
 using Microsoft.Bot.Solutions.Skills.Dialogs;
 using Microsoft.Bot.Solutions.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Moq;
 using $ext_safeprojectname$.Bots;
 using $ext_safeprojectname$.Dialogs;
 using $ext_safeprojectname$.Models;
@@ -54,7 +57,7 @@ namespace $safeprojectname$
         [TestInitialize]
         public virtual void Initialize()
         {
-            Services = new ServiceCollection();
+            Services = new ServiceCollection().AddLogging(config => config.AddConsole());
             Services.AddSingleton(new BotSettings());
             Services.AddSingleton(new BotServices()
             {
@@ -132,6 +135,14 @@ namespace $safeprojectname$
             Services.AddSingleton<TestAdapter, DefaultTestAdapter>();
             Services.AddTransient<IBot, DefaultActivityHandler<MockMainDialog>>();
 
+            // Add MicrosoftAPPId to configuration
+            var configuration = new Mock<IConfiguration>();
+            var configurationSection = new Mock<IConfigurationSection>();
+            configurationSection.Setup(a => a.Value).Returns("testvalue");
+            configuration.Setup(a => a.GetSection("MicrosoftAppId")).Returns(configurationSection.Object);
+            // Register configuration
+            Services.AddSingleton(configuration.Object);
+
             TestUserProfileState = new UserProfileState();
             TestUserProfileState.Name = "Bot";
         }
@@ -139,8 +150,7 @@ namespace $safeprojectname$
         public TestFlow GetTestFlow(bool includeUserProfile = true)
         {
             var sp = Services.BuildServiceProvider();
-            var adapter = sp.GetService<TestAdapter>()
-                .Use(new FeedbackMiddleware(sp.GetService<ConversationState>(), sp.GetService<IBotTelemetryClient>()));
+            var adapter = sp.GetService<TestAdapter>();
 
             var userState = sp.GetService<UserState>();
             var userProfileState = userState.CreateProperty<UserProfileState>(nameof(UserProfileState));

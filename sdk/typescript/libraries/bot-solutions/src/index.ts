@@ -9,7 +9,6 @@
 export * from './authentication';
 export * from './dialogs';
 export * from './extensions';
-export * from './feedback';
 export * from './middleware';
 export * from './proactive';
 export * from './resources';
@@ -17,7 +16,6 @@ export * from './responses';
 export * from './skills';
 export * from './taskExtensions';
 export * from './util';
-export * from './botSettings';
+export * from './botSettingsBase';
 export * from './cognitiveModelSet';
-export * from './localesUtils';
 export * from './tokenEvents';

@@ -205,7 +205,7 @@ public class SpeechSdk {
                 case 5:// this is Connection was closed by the remote host. Error code: 1011. Error details: Unable to read data from the transport connection: Connection reset by peer
                 case 1:// this is the authentication error (401) when using wrong certificate
                     isConnected = false;
-                    EventBus.getDefault().post(new Disconnected(canceledEventArgs.getErrorDetails(), errCode));
+                    EventBus.getDefault().post(new Disconnected(canceledEventArgs.getReason().getValue(), canceledEventArgs.getErrorDetails(), errCode));
                     break;
             }
 
@@ -243,6 +243,8 @@ public class SpeechSdk {
                     configuration.speechSubscriptionKey,
                     configuration.speechRegion);
         }
+
+        dialogServiceConfig.setProperty(PropertyId.Conversation_From_Id, from_user.getId());
 
         dialogServiceConfig.setProperty("SPEECH-RecoLanguage", configuration.srLanguage);
         if (!(configuration.customVoiceDeploymentIds == null || configuration.customVoiceDeploymentIds.isEmpty())) {
@@ -334,16 +336,6 @@ public class SpeechSdk {
         });
     }
 
-    public void disconnectAsync(){
-        isConnected = false;
-        LogInfo("disconnectAsync");
-        final Future<Void> task = botConnector.disconnectAsync();
-        setOnTaskCompletedListener(task, result -> {
-            // your code here
-            LogInfo("disconnected done");
-        });
-    }
-
     private void startResponseTimeoutTimer(){
         LogInfo("startResponseTimeoutTimer");
         if (timeoutResponseRunnable == null) {
@@ -411,7 +403,7 @@ public class SpeechSdk {
         });
     }
 
-    public void reset() {
+    public void disconnectAsync() {
         cancelResponseTimeoutTimer();
         isConnected = false;
         stopKeywordListening();
