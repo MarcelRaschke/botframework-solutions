@@ -119,6 +119,7 @@ foreach ($langCode in $languageMap.Keys) {
                     --key $kb.subscriptionKey `
                     --intentName "q_$($kb.id)" `
                     --dispatch $dispatchFile `
+		    --endpointUrl $qnaEndpoint `
                     --dataFolder $(Join-Path $dispatchFolder $langCode) 2>> $logFile | Out-Null
                 Write-Host "Done." -ForegroundColor Green
             }
@@ -142,13 +143,11 @@ foreach ($langCode in $languageMap.Keys) {
                 --endpoint $luisApp.endpoint `
                 --subscriptionKey $luisApp.authoringKey `
                 --versionId $luisApp.version `
-                --out $outJson `
-                --force 2>> $log | Out-Null
+                --force | Out-File -encoding oem $($outJson)
 
             bf luis:convert `
                 --in $outJson `
-                --out $outLU `
-                --force 2>> $logFile | Out-Null
+                --force | Out-File -encoding oem $($outLU)
             Write-Host "Done." -ForegroundColor Green
 
             # Parse LU file
@@ -160,9 +159,8 @@ foreach ($langCode in $languageMap.Keys) {
             Write-Host "> Parsing $($langCode) $($luisApp.id) LU file ..." -NoNewline
             bf luis:convert `
                 --in $outLU `
-                --out $outJson `
                 --culture $culture `
-                --force 2>> $logFile | Out-Null
+                --force | Out-File -encoding oem $($outJson)
             Write-Host "Done." -ForegroundColor Green
 
             if ($useLuisGen) {
@@ -194,16 +192,19 @@ foreach ($langCode in $languageMap.Keys) {
 
         # Update local LU files based on hosted QnA KBs
         foreach ($kb in $models.knowledgebases) {
+            $outJson = $(Join-Path $qnaFolder $langCode "$($kb.id).json")
+            $outQnA = $(Join-Path $qnaFolder $langCode "$($kb.id).qna")
+
             Write-Host "> Updating local $($langCode) $($kb.id).qna file ..." -NoNewline
             bf qnamaker:kb:export `
                 --endpoint $qnaEndpoint `
                 --environment Prod `
                 --kbId $kb.kbId `
-                --subscriptionKey $kb.subscriptionKey > $(Join-Path $qnaFolder $langCode "$($kb.id).json")
+                --subscriptionKey $kb.subscriptionKey | Out-File -encoding oem $($outJson)
                 
             bf qnamaker:convert `
-                --in $(Join-Path $qnaFolder $langCode "$($kb.id).json") `
-                --out $(Join-Path $qnaFolder $langCode "$($kb.id).qna") `
+                --in $($outJson) `
+                --out $($outQnA) `
                 --force 2>> $logFile | Out-Null
             Write-Host "Done." -ForegroundColor Green
 		
@@ -217,6 +218,7 @@ foreach ($langCode in $languageMap.Keys) {
                     --id $kb.kbId  `
                     --key $kb.subscriptionKey  `
                     --intentName "q_$($kb.id)" `
+		    --endpointUrl $qnaEndpoint `
                     --dispatch $(Join-Path $dispatchFolder $langCode "$($dispatch.name).dispatch") `
                     --dataFolder $(Join-Path $dispatchFolder $langCode))  2>> $logFile | Out-Null
                 Write-Host "Done." -ForegroundColor Green

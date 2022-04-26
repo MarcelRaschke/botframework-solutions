@@ -6,17 +6,17 @@
 import { BotFrameworkAdapter, TurnContext } from 'botbuilder';
 import { Choice, ChoicePrompt, ComponentDialog, DialogTurnResult, DialogTurnStatus, FoundChoice,
     OAuthPrompt, PromptValidatorContext, WaterfallDialog, WaterfallStep, WaterfallStepContext,
-    OAuthPromptSettings } from 'botbuilder-dialogs';
-import { TokenStatus } from 'botframework-connector/lib/tokenApi/models';
+    OAuthPromptSettings,
+    Dialog } from 'botbuilder-dialogs';
+import { TokenStatus } from 'botframework-connector';
 import { ActionTypes, Activity, ActivityTypes, TokenResponse } from 'botframework-schema';
-import i18next from 'i18next';
 import { IOAuthConnection } from '../authentication';
 import { ResponseManager } from '../responses';
 import { TokenEvents } from '../tokenEvents';
 import { AuthenticationResponses } from './authenticationResponses';
 import { OAuthProviderExtensions } from './oAuthProviderExtensions';
 import { IProviderTokenResponse } from './providerTokenResponse';
-import { OAuthProvider } from './oAuthProvider';
+import { AppCredentials } from 'botframework-connector';
 
 enum DialogIds {
     providerPrompt = 'ProviderPrompt',
@@ -28,21 +28,25 @@ enum DialogIds {
  * Provides the ability to prompt for which Authentication provider the user wishes to use.
  */
 export class MultiProviderAuthDialog extends ComponentDialog {
+    private static readonly acceptedLocales: string[] = ['en', 'de', 'es', 'fr', 'it', 'zh'];
     private selectedAuthType: string = '';
     private authenticationConnections: IOAuthConnection[];
     private responseManager: ResponseManager;
+    private oauthCredentials: AppCredentials | undefined;
 
     public constructor(
         authenticationConnections: IOAuthConnection[],
-        promptSettings: OAuthPromptSettings[]
+        locale: string,
+        promptSettings: OAuthPromptSettings[],
+        oauthCredentials?: AppCredentials
     ) {
         super(MultiProviderAuthDialog.name);
 
         if (authenticationConnections === undefined) { throw new Error('The value of authenticationConnections cannot be undefined'); }
         this.authenticationConnections = authenticationConnections;
-
+        this.oauthCredentials = oauthCredentials;
         this.responseManager = new ResponseManager(
-            ['en', 'de', 'es', 'fr', 'it', 'zh'],
+            MultiProviderAuthDialog.acceptedLocales,
             [AuthenticationResponses]
         );
 
@@ -65,32 +69,38 @@ export class MultiProviderAuthDialog extends ComponentDialog {
             for (var i = 0; i < this.authenticationConnections.length; ++i) {
                 let connection = this.authenticationConnections[i];
 
-                // We ignore placeholder connections in config that don't have a Name
-                if (connection.name !== undefined && connection.name.trim().length > 0) {
-                    const settings: OAuthPromptSettings = promptSettings[i] || {
-                        connectionName: connection.name,
-                        title: i18next.t('common:login'),
-                        text: i18next.t('common:loginDescription', connection.name)
-                    };
-
-                    this.addDialog(new OAuthPrompt(
-                        connection.name,
-                        settings,
-                        this.authPromptValidator.bind(this)
-                    ));
-                }
+                MultiProviderAuthDialog.acceptedLocales.forEach((locale): void => {
+                    this.addDialog(this.getLocalizedDialog(locale, connection.name, promptSettings[i]));
+                });
             };
 
-            this.addDialog(new WaterfallDialog(DialogIds.firstStepPrompt, authSteps));
+            this.addDialog(new WaterfallDialog(DialogIds.authPrompt, authSteps));
             this.addDialog(new ChoicePrompt(DialogIds.providerPrompt));
         } else {
             throw new Error('There is no authenticationConnections value');
         }
     }
 
+    private getLocalizedDialog(locale: string, connectionName: string, settings: OAuthPromptSettings): Dialog {
+        const loginButtonActivity: string = this.responseManager.getLocalizedResponse(AuthenticationResponses.loginButton, locale).text;
+        const loginPromptActivity: string = this.responseManager.getLocalizedResponse(AuthenticationResponses.loginPrompt, locale, new Map<string, string>([['authType', connectionName]])).text;
+        
+        settings = settings || {
+            connectionName: connectionName,
+            title: loginButtonActivity,
+            text: loginPromptActivity
+        };
+
+        return new OAuthPrompt(
+            connectionName + '_' + locale,
+            settings,
+            this.authPromptValidator.bind(this)
+        );
+    }
+
     // Validators
-    protected async tokenResponseValidator(promptContext: PromptValidatorContext<Activity>): Promise<boolean> {
-        const activity: Activity | undefined = promptContext.recognized.value;
+    protected async tokenResponseValidator(pc: PromptValidatorContext<Activity>): Promise<boolean> {
+        const activity: Activity | undefined = pc.recognized.value;
         if (activity !== undefined && 
             ((activity.type === ActivityTypes.Event && activity.name === TokenEvents.tokenResponseEventName) || 
             (activity.type === ActivityTypes.Invoke && activity.name === 'signin/verifyState'))) {
@@ -101,22 +111,24 @@ export class MultiProviderAuthDialog extends ComponentDialog {
     }
 
     private async firstStep(stepContext: WaterfallStepContext): Promise<DialogTurnResult> {
-
         return await stepContext.beginDialog(DialogIds.authPrompt);
     }
 
     private async promptForProvider(stepContext: WaterfallStepContext): Promise<DialogTurnResult> {
         if (this.authenticationConnections.length === 1) {
-            const result: string = this.authenticationConnections[0].name;
+            const result: string = this.authenticationConnections[0].name + '_' + stepContext.context.activity.locale.split('-')[0];
 
             return await stepContext.next(result);
         }
 
+        //PENDING: adapter could not be parsed to IExtendedUserTokenProvider as C# does
         const adapter: BotFrameworkAdapter = stepContext.context.adapter as BotFrameworkAdapter;
         if (adapter !== undefined) {
             const tokenStatusCollection: TokenStatus[] = await adapter.getTokenStatus(
                 stepContext.context,
-                stepContext.context.activity.from.id);
+                stepContext.context.activity.from.id,
+                undefined,
+                this.oauthCredentials);
 
             const matchingProviders: TokenStatus[] = tokenStatusCollection.filter((p: TokenStatus): boolean => {
                 return (p.hasToken || false) && this.authenticationConnections.some((t: IOAuthConnection): boolean => {
@@ -145,7 +157,7 @@ export class MultiProviderAuthDialog extends ComponentDialog {
                 });
 
                 return stepContext.prompt(DialogIds.providerPrompt, {
-                    prompt: this.responseManager.getResponse(AuthenticationResponses.configuredAuthProvidersPrompt),
+                    prompt: this.responseManager.getResponse(AuthenticationResponses.configuredAuthProvidersPrompt, stepContext.context.activity.locale as string),
                     choices: choices
                 });
             } else {
@@ -161,7 +173,7 @@ export class MultiProviderAuthDialog extends ComponentDialog {
                 });
 
                 return stepContext.prompt(DialogIds.providerPrompt, {
-                    prompt: this.responseManager.getResponse(AuthenticationResponses.authProvidersPrompt),
+                    prompt: this.responseManager.getResponse(AuthenticationResponses.authProvidersPrompt, stepContext.context.activity.locale as string),
                     choices: choices
                 });
             }
@@ -224,11 +236,12 @@ export class MultiProviderAuthDialog extends ComponentDialog {
             throw new Error('"userId" undefined');
         }
 
+        //PENDING: adapter could not be parsed to IExtendedUserTokenProvider as C# does
         const tokenProvider: BotFrameworkAdapter = context.adapter as BotFrameworkAdapter;
         if (tokenProvider !== undefined) {
-            return await tokenProvider.getTokenStatus(context, userId, includeFilter);
+            return await tokenProvider.getTokenStatus(context, userId, includeFilter, this.oauthCredentials);
         } else {
-            throw new Error('Adapter does not support IUserTokenProvider');
+            throw new Error('Adapter does not support IExtendedUserTokenProvider');
         }
     }
 
