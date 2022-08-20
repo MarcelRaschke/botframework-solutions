@@ -31,7 +31,8 @@
   "dependencies": {
     "chalk": "^2.4.2",
     "lodash": "^4.17.15",
-    "yeoman-generator": "^3.2.0"
+    "yeoman-generator": "^3.2.0",
+    "@snyk/protect": "latest"
   },
   "devDependencies": {
     "eslint": "^5.12.0",
@@ -40,12 +41,12 @@
     "eslint-plugin-prettier": "^3.0.1",
     "mocha": "^6.2.3",
     "mocha-junit-reporter": "^1.22.0",
-    "nyc": "^14.1.1",
+    "nyc": "^15.0.0",
     "typescript": "^3.4.5",
     "prettier": "^1.15.3",
     "sinon": "^7.3.2",
     "yeoman-assert": "^3.1.1",
-    "yeoman-test": "^1.9.1"
+    "yeoman-test": "^5.0.0"
   },
   "engines": {
     "npm": ">= 4.0.0"
@@ -66,7 +67,10 @@
     "test-coverage-ci": "nyc --reporter=cobertura mocha --reporter mocha-junit-reporter",
     "pretest": "npm run lint",
     "lint": "eslint .",
-    "lint-fix": "eslint --fix ."
+    "lint-fix": "eslint --fix .",
+    "prepublish": "npm run snyk-protect",
+    "snyk-protect": "snyk-protect"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "snyk": true
 }
